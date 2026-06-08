@@ -1,0 +1,56 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+.env/
+.venv/
+
+# Local environment files
+.env
+.env.local
+.env.development
+.env.production
+
+# Git
+.git/
+.gitignore
+
+# IDE/editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test/cache folders
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Alembic local cache
+alembic/__pycache__/
+
+# Logs
+*.log
+logs/
+
+# Local database/files
+*.sqlite3
+*.db
+
+# Node/frontend if accidentally present
+node_modules/
+dist/
+build/
+
+# Documentation not needed in container
+README.md
