@@ -189,6 +189,12 @@ def change_user_status(
     if payload.status not in allowed_statuses:
         raise HTTPException(status_code=400, detail="Invalid status")
 
+    if user_id == admin_user.id and payload.status in ["inactive", "banned", "removed"]:
+        raise HTTPException(
+            status_code=400,
+            detail="You cannot deactivate, ban, or remove your own admin account",
+        )
+
     user = db.query(UserWebCheckin).filter(
         UserWebCheckin.id == user_id,
         UserWebCheckin.is_deleted == False,
@@ -198,13 +204,14 @@ def change_user_status(
         raise HTTPException(status_code=404, detail="User not found")
 
     old_status = user.status
+    old_is_active = user.is_active
 
     user.status = payload.status
     user.is_active = payload.status == "active"
 
-    if payload.status == "removed":
-        user.is_deleted = True
-
+    # Important:
+    # Do NOT set is_deleted here.
+    # Status change and deletion/removal should be separate actions.
     db.commit()
     db.refresh(user)
 
@@ -215,13 +222,24 @@ def change_user_status(
         target_user_id=user.id,
         entity_type="users_web_checkin",
         entity_id=user.id,
-        old_value={"status": old_status},
-        new_value={"status": user.status, "is_active": user.is_active},
+        old_value={
+            "status": old_status,
+            "is_active": old_is_active,
+        },
+        new_value={
+            "status": user.status,
+            "is_active": user.is_active,
+        },
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
 
-    return {"message": "Status updated successfully"}
+    return {
+        "message": "Status updated successfully",
+        "user_id": user.id,
+        "status": user.status,
+        "is_active": user.is_active,
+    }
 
 
 @router.patch("/{user_id}/password")
@@ -256,3 +274,59 @@ def reset_password(
     )
 
     return {"message": "Password reset successfully"}
+
+@router.delete("/{user_id}")
+def remove_user(
+    user_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin_user: UserWebCheckin = Depends(require_admin),
+):
+    if user_id == admin_user.id:
+        raise HTTPException(
+            status_code=400,
+            detail="You cannot remove your own admin account",
+        )
+
+    user = db.query(UserWebCheckin).filter(
+        UserWebCheckin.id == user_id,
+        UserWebCheckin.is_deleted == False,
+    ).first()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    old_value = {
+        "status": user.status,
+        "is_active": user.is_active,
+        "is_deleted": user.is_deleted,
+    }
+
+    user.status = "removed"
+    user.is_active = False
+    user.is_deleted = True
+
+    db.commit()
+    db.refresh(user)
+
+    create_audit_log(
+        db=db,
+        action="user_removed",
+        actor_user_id=admin_user.id,
+        target_user_id=user.id,
+        entity_type="users_web_checkin",
+        entity_id=user.id,
+        old_value=old_value,
+        new_value={
+            "status": user.status,
+            "is_active": user.is_active,
+            "is_deleted": user.is_deleted,
+        },
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+
+    return {
+        "message": "User removed successfully",
+        "user_id": user.id,
+    }
